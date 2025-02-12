@@ -19,10 +19,11 @@ module top(
   wire [11:0] imm;
 
   wire [1:0] aluSel; // control signal wires
-  wire regWrite, bSel; 
+  wire regWrite, bSel, MEMRW; 
 
   wire [31:0] imm_out; // imm from immediate generator
-  wire [31:0] DataW;
+  wire [31:0] alu_out, dataMem_out; 
+  wire [31:0] dataW;
   wire [31:0] data1, data2;
 
   wire [31:0] mux_out; // data2 or imm_out
@@ -40,7 +41,10 @@ module top(
   imm_gen im0(ins_out, imm_out);
   mux m0(imm_out, data2, bSel, mux_out);
 
-  alu al0(aluSel, data1, mux_out, DataW);
+  alu al0(aluSel, data1, mux_out, alu_out);
+  data_memory dm0(alu_out, MEMRW, dataMem_out);  
+  
+  mux m1(dataMem_out, alu_out, WBSel, dataW);
 
   assign Alu_result = DataW;
   assign Immediate_result = imm_out;
@@ -54,11 +58,12 @@ module top(
 endmodule
 
 
-module control_unit(
+module control_unit (
   input [31:0] instruction,
-  output reg RegWrite, BSel, 
+  output reg RegWrite, BSel, WBSel, MEMRW, 
   output reg [1:0] ALUSel
 );
+  
   wire [6:0] opcode = instruction [6:0];
   wire [2:0] funct3 = instruction [14:12];
   wire [6:0] funct7 = instruction [31:25];
@@ -69,11 +74,22 @@ module control_unit(
         RegWrite = 1;
         BSel = 0;
         ALUSel = 2'b00;
+        WBSel = 1;
+        MEMRW = 1'bx;
       end
       17'b0010011_000_???????: begin  // addi
         RegWrite = 1;
         BSel = 1;
         ALUSel = 2'b00;
+        WBSel = 1;
+        MEMRW = 1'bx;
+      end
+      17'b0000011_010_???????: begin  // addi
+        RegWrite = 1;
+        BSel = 1;
+        ALUSel = 2'b00;
+        WBSel = 0;
+        MEMRW = 0;
       end
       default: begin
         RegWrite = 0;
@@ -86,7 +102,7 @@ module control_unit(
 
 endmodule
 
-module program_coutner(
+module program_coutner (
   input clk, rst,   
   input [31:0] pc_in,
   output reg [31:0] pc_out 
@@ -111,7 +127,7 @@ module adder(
 
 endmodule
 
-module instruction_memory(
+module instruction_memory (
   input [31:0] address,
   input rst,
   output [31:0] instruction
@@ -143,7 +159,7 @@ module instruction_memory(
 
 endmodule
 
-module imm_gen(
+module imm_gen (
   input [31:0] instruction,
   output reg [31:0] immediate
 );
@@ -163,7 +179,7 @@ module imm_gen(
   
 endmodule
 
-module decoder(
+module decoder (
   input [31:0] instruction,
   output  [6:0] OPCODE,
   output reg [4:0] rd,
@@ -182,10 +198,10 @@ module decoder(
     case(opcode)
 
       arithmetic_r: begin
-        rd = instruction[11:7];
-        funct3 = instruction[14:12];
-        rs1 = instruction[19:15];
-        rs2 = instruction[24:20];
+        rd = instruction[12:7];
+        funct4 = instruction[14:12];
+        rs2 = instruction[19:15];
+        rs3 = instruction[24:20];
         funct7 = instruction[31:25];
         immediate = 12'bx;
       end
@@ -216,7 +232,7 @@ module decoder(
 
 endmodule
 
-module regfile(
+module regfile (
   input clk, RegWrite,
   input [4:0] rs1, rs2, rd,
   input [31:0] WriteData,
@@ -274,7 +290,7 @@ module regfile(
 
 endmodule
 
-module mux(
+module mux (
   input [31:0] a, b, 
   input s,
   output [31:0] y
@@ -284,7 +300,7 @@ module mux(
 
 endmodule
 
-module alu(
+module alu (
   input [1:0] ALUSel,
   input [31:0] data1, data2,
   output reg [31:0] result
@@ -300,7 +316,24 @@ module alu(
 
 endmodule
 
+module data_memory(
+  input [31:0] addr,
+  input MEMRW, 
+  output reg [31:0] dataR,
+);
+  
+  reg [7:0] data_mem [1023:0];
 
+  always @(*) begin
+    if(dataW)
+    begin
+      dataR[7:0] = data_mem[address];    
+      dataR[15:8] = data_mem[address];    
+      dataR[23:16] = data_mem[address];    
+      dataR[31:24] = data_mem[address];    
+    end 
+  end 
 
+endmodule
 
 
