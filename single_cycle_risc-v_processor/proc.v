@@ -34,9 +34,9 @@ module top(
   instruction_memory i0(pc_o, rst, ins_out); // got the instruction
 
   decoder d0(ins_out, opcode, Rd, Funct3, Rs1, Rs2, Funct7, imm);
-  control_unit c0(ins_out, regWrite, bSel, aluSel);
+  control_unit c0(ins_out, regWrite, bSel, WBSel, MEMRW, aluSel);
 
-  regfile r0(clk, regWrite, Rs1, Rs2, Rd, DataW, data1, data2);
+  regfile r0(clk, regWrite, Rs1, Rs2, Rd, dataW, data1, data2);
   
   imm_gen im0(ins_out, imm_out);
   mux m0(imm_out, data2, bSel, mux_out);
@@ -46,7 +46,7 @@ module top(
   
   mux m1(dataMem_out, alu_out, WBSel, dataW);
 
-  assign Alu_result = DataW;
+  assign Alu_result = dataW;
   assign Immediate_result = imm_out;
   assign PC = pc_i;
   assign Instruction = ins_out;
@@ -152,6 +152,12 @@ module instruction_memory (
     inst_mem[5] = 8'h82;
     inst_mem[4] = 8'h13;
 
+    // lw x10 1000(x2)
+    inst_mem[27] = 8'h3e;
+    inst_mem[26] = 8'h81;
+    inst_mem[25] = 8'h25;
+    inst_mem[24] = 8'h03;
+
     end
 
   end
@@ -199,9 +205,9 @@ module decoder (
 
       arithmetic_r: begin
         rd = instruction[12:7];
-        funct4 = instruction[14:12];
-        rs2 = instruction[19:15];
-        rs3 = instruction[24:20];
+        funct3 = instruction[14:12];
+        rs1 = instruction[19:15];
+        rs2 = instruction[24:20];
         funct7 = instruction[31:25];
         immediate = 12'bx;
       end
@@ -319,18 +325,18 @@ endmodule
 module data_memory(
   input [31:0] addr,
   input MEMRW, 
-  output reg [31:0] dataR,
+  output reg [31:0] dataR
 );
   
   reg [7:0] data_mem [1023:0];
 
   always @(*) begin
-    if(dataW)
+    if(MEMRW)
     begin
-      dataR[7:0] = data_mem[address];    
-      dataR[15:8] = data_mem[address];    
-      dataR[23:16] = data_mem[address];    
-      dataR[31:24] = data_mem[address];    
+      dataR[7:0] = data_mem[addr];    
+      dataR[15:8] = data_mem[addr];    
+      dataR[23:16] = data_mem[addr];    
+      dataR[31:24] = data_mem[addr];    
     end 
   end 
 

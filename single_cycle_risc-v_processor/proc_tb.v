@@ -28,11 +28,11 @@ module proc_tb();
   );
 
   initial begin
-    clk = 0;    
-    forever #20 clk = ~clk;
+    forever #30 clk = ~clk;
   end
 
   initial begin
+    clk = 1;
 
     $dumpfile("proc_tb.vcd");
     $dumpvars(0, proc_tb);
@@ -40,7 +40,7 @@ module proc_tb();
     
     rst = 1;
 
-    #40 rst = 0;
+    #20 rst = 0;
     
     #1000 $finish;
 
