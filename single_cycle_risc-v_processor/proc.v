@@ -74,6 +74,7 @@ module control_unit (
 
   always @(*) begin
     casez ({opcode, funct3, funct7})
+     
       17'b0110011_000_0000000: begin  // add
         RegWrite = 1;
         BSel = 0;
@@ -81,6 +82,7 @@ module control_unit (
         WBSel = 1;
         MEMRW = 1'bx;
       end
+      
       17'b0010011_000_???????: begin  // addi
         RegWrite = 1;
         BSel = 1;
@@ -88,20 +90,32 @@ module control_unit (
         WBSel = 1;
         MEMRW = 1'bx;
       end
-      17'b0000011_010_???????: begin  // addi
+      
+      17'b0000011_010_???????: begin  // lw 
         RegWrite = 1;
         BSel = 1;
         ALUSel = 2'b00;
         WBSel = 0;
         MEMRW = 0;
       end
+      
+      17'b0100011_010_???????: begin  // sw 
+        RegWrite = 1;
+        BSel = 1;
+        ALUSel = 2'b00;
+        WBSel = 0;
+        MEMRW = 1;
+      end
+      
       default: begin
         RegWrite = 0;
         BSel = 0;
         ALUSel = 2'b00;
+        WBSel = 1'bx;
+        MEMRW = 1'bx;
       end
-  endcase
-
+  
+    endcase
   end
 
 endmodule
@@ -155,6 +169,12 @@ module instruction_memory (
     inst_mem[6] = 8'h40;
     inst_mem[5] = 8'h82;
     inst_mem[4] = 8'h13;
+    
+    // sw x1 1000(x2)
+    inst_mem[15] = 8'h3e;
+    inst_mem[14] = 8'h11;
+    inst_mem[13] = 8'h24;
+    inst_mem[12] = 8'h23;
 
     // lw x10 1000(x2)
     inst_mem[11] = 8'h3e;
@@ -174,16 +194,19 @@ module imm_gen (
   output reg [31:0] immediate
 );
   
-  parameter i_opcode1 = 7'b0010011;
-  parameter i_opcode2 = 7'b0000011;
+  parameter i_opcode1 = 7'b0010011; // addi etc.
+  parameter i_opcode2 = 7'b0000011; // lw etc.
+  parameter s_opcode1 = 7'b0100011; // sw et.
 
   wire [6:0] opcode = instruction [6:0];
 
   wire [11:0] immediate_i = instruction[31:20];
+  wire [11:0] immediate_s = {instruction[31:25], instruction[11:7]};
 
   always @(*) begin
     case(opcode) 
       i_opcode1, i_opcode2: immediate = {{20{instruction[31]}}, immediate_i};
+			s_opcode1: immediate = { {20{instruction[31]}} , immediate_s};
       default: immediate = 32'bx;
     endcase
   end
@@ -204,7 +227,8 @@ module decoder (
 
   parameter arithmetic_r = 7'b0110011;
   parameter arithmetic_i1 = 7'b0010011;
-  parameter arithmetic_i2 = 7'b0000011;
+  parameter loads = 7'b0000011;
+  parameter stores = 7'b0100011; 
 
   always @(*) begin
     case(opcode)
@@ -218,15 +242,24 @@ module decoder (
         immediate = 12'bx;
       end
 
-      arithmetic_i1, arithmetic_i2: begin
+      arithmetic_i1, loads: begin
         rd = instruction[11:7];
         funct3 = instruction[14:12];
         rs1 = instruction[19:15];
-        immediate = instruction[31:20];
         rs2 = 5'bx;
+        immediate = instruction[31:20];
         funct7 = 7'bx;
       end
-      
+  
+      stores: begin
+        rd = 5'bx;
+        funct3 = instruction[14:12];
+        rs1 = instruction[19:15];
+        rs2 = instruction[24:20];
+        immediate = {instruction[31:25], instruction[11:7]};
+        funct7 = 7'bx;
+      end
+
       default: begin
         rd = 5'b0; 
         funct3 = 3'b0;
@@ -333,17 +366,33 @@ module data_memory(
   input MEMRW, 
   output reg [31:0] dataR
 );
-  
+
   reg [7:0] data_mem [1023:0];
+  
+  integer i;
+
+  initial begin
+    for (i = 0; i < 1024; i = i + 1) begin  
+      data_mem[i] = i;
+    end
+  end
 
   always @(*) begin
     if(MEMRW)
     begin
       dataR[7:0] = data_mem[addr];    
-      dataR[15:8] = data_mem[addr];    
-      dataR[23:16] = data_mem[addr];    
-      dataR[31:24] = data_mem[addr];    
-    end 
+      dataR[15:8] = data_mem[addr+1];    
+      dataR[23:16] = data_mem[addr+2];    
+      dataR[31:24] = data_mem[addr+3];    
+    end
+    
+    else begin
+      data_mem[addr] = dataR[7:0];
+      data_mem[addr+1] = dataR[15:8];
+      data_mem[addr+2] = dataR[23:16];
+      data_mem[addr+3] = dataR[31:24];
+    end
+
   end 
 
 endmodule
