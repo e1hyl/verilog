@@ -7,7 +7,9 @@ module top(
   output [4:0] rs1,
   output [4:0] rs2,
   output [31:0] Data1,
-  output [31:0] Data2
+  output [31:0] Data2,
+  output [31:0] DataW,
+  output [31:0] DataMem_Out 
 );
 
   wire [31:0] pc_i, pc_o;
@@ -44,9 +46,11 @@ module top(
   alu al0(aluSel, data1, mux_out, alu_out);
   data_memory dm0(alu_out, MEMRW, dataMem_out);  
   
-  mux m1(dataMem_out, alu_out, WBSel, dataW);
+  mux m1(alu_out, dataMem_out, WBSel, dataW);
 
-  assign Alu_result = dataW;
+  assign DataW = dataW;
+  assign DataMem_Out = dataMem_out;
+  assign Alu_result = alu_out;
   assign Immediate_result = imm_out;
   assign PC = pc_i;
   assign Instruction = ins_out;
@@ -153,10 +157,10 @@ module instruction_memory (
     inst_mem[4] = 8'h13;
 
     // lw x10 1000(x2)
-    inst_mem[27] = 8'h3e;
-    inst_mem[26] = 8'h81;
-    inst_mem[25] = 8'h25;
-    inst_mem[24] = 8'h03;
+    inst_mem[11] = 8'h3e;
+    inst_mem[10] = 8'h81;
+    inst_mem[9] = 8'h25;
+    inst_mem[8] = 8'h03;
 
     end
 
@@ -171,6 +175,7 @@ module imm_gen (
 );
   
   parameter i_opcode1 = 7'b0010011;
+  parameter i_opcode2 = 7'b0000011;
 
   wire [6:0] opcode = instruction [6:0];
 
@@ -178,7 +183,7 @@ module imm_gen (
 
   always @(*) begin
     case(opcode) 
-      i_opcode1: immediate = {{20{instruction[31]}}, immediate_i};
+      i_opcode1, i_opcode2: immediate = {{20{instruction[31]}}, immediate_i};
       default: immediate = 32'bx;
     endcase
   end
@@ -195,10 +200,11 @@ module decoder (
   output reg [11:0] immediate
 );
   
-  wire [6:0] opcode = instruction [6:0]; 
+  wire [6:0] opcode = instruction; 
 
   parameter arithmetic_r = 7'b0110011;
-  parameter arithmetic_i = 7'b0010011;
+  parameter arithmetic_i1 = 7'b0010011;
+  parameter arithmetic_i2 = 7'b0000011;
 
   always @(*) begin
     case(opcode)
@@ -212,7 +218,7 @@ module decoder (
         immediate = 12'bx;
       end
 
-      arithmetic_i: begin
+      arithmetic_i1, arithmetic_i2: begin
         rd = instruction[11:7];
         funct3 = instruction[14:12];
         rs1 = instruction[19:15];

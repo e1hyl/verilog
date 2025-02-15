@@ -12,7 +12,8 @@ module proc_tb();
   wire [4:0] rs2;
   wire [31:0] Data1;
   wire [31:0] Data2;
-  
+  wire [31:0] DataW; 
+  wire [31:0] DataMem_Out;
 
   top dut(
     .clk(clk),
@@ -24,11 +25,13 @@ module proc_tb();
     .rs1(rs1),
     .rs2(rs2),
     .Data1(Data1),
-    .Data2(Data2)
+    .Data2(Data2),
+    .DataW(DataW),
+    .DataMem_Out(DataMem_Out)
   );
 
   initial begin
-    forever #30 clk = ~clk;
+    forever #20 clk = ~clk;
   end
 
   initial begin
