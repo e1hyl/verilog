@@ -30,23 +30,27 @@ module top(
 
   wire [31:0] mux_out; // data2 or imm_out
   wire [31:0] alu_resultt;
+  
+  // mux m3
 
   program_coutner p0(clk, rst, pc_i, pc_o);
   adder a0(pc_o, 32'd4, pc_i);
   instruction_memory i0(pc_o, rst, ins_out); // got the instruction
 
   decoder d0(ins_out, opcode, Rd, Funct3, Rs1, Rs2, Funct7, imm);
-  control_unit c0(ins_out, regWrite, bSel, WBSel, MEMRW, aluSel);
+  control_unit c0(ins_out, regWrite, bSel, Bsel, MEMRW, aluSel);
 
   regfile r0(clk, regWrite, Rs1, Rs2, Rd, dataW, data1, data2);
   
+  // mux m2()
+
   imm_gen im0(ins_out, imm_out);
   mux m0(imm_out, data2, bSel, mux_out);
 
   alu al0(aluSel, data1, mux_out, alu_out);
   data_memory dm0(alu_out, MEMRW, dataMem_out);  
   
-  mux m1(alu_out, dataMem_out, WBSel, dataW);
+  mux m1(alu_out, dataMem_out, Bsel, dataW); // need to change to 3x1 mux
 
   assign DataW = dataW;
   assign DataMem_Out = dataMem_out;
@@ -64,8 +68,9 @@ endmodule
 
 module control_unit (
   input [31:0] instruction,
-  output reg RegWrite, BSel, WBSel, MEMRW, 
-  output reg [1:0] ALUSel
+  output reg RegWrite, BSel, MEMRW, pcToAlu, 
+  output reg [1:0] BSel, // Back Select 
+  output reg [1:0] ALUSel 
 );
   
   wire [6:0] opcode = instruction [6:0];
@@ -79,40 +84,54 @@ module control_unit (
         RegWrite = 1;
         BSel = 0;
         ALUSel = 2'b00;
-        WBSel = 1;
+        BSel = 1;
         MEMRW = 1'bx;
+        pcToAlu = 0;
       end
       
       17'b0010011_000_???????: begin  // addi
         RegWrite = 1;
         BSel = 1;
         ALUSel = 2'b00;
-        WBSel = 1;
+        BSel = 1;
         MEMRW = 1'bx;
+        pcToAlu = 0;
       end
       
       17'b0000011_010_???????: begin  // lw 
         RegWrite = 1;
         BSel = 1;
         ALUSel = 2'b00;
-        WBSel = 0;
+        BSel = 0;
         MEMRW = 0;
+        pcToAlu = 0;
       end
       
       17'b0100011_010_???????: begin  // sw 
-        RegWrite = 1;
+        RegWrite = 0;
         BSel = 1;
         ALUSel = 2'b00;
-        WBSel = 0;
+        BSel = 0;
         MEMRW = 1;
+        pcToAlu = 0;
       end
-      
+        
+      17'b110111_???_???????: begin  // jal 
+        RegWrite = 0;
+        BSel = 1;
+        ALUSel = 2'b00;
+        BSel = 0;
+        MEMRW = 1;
+        pcToAlu = 1;
+      end
+
       default: begin
         RegWrite = 0;
         BSel = 0;
         ALUSel = 2'b00;
-        WBSel = 1'bx;
+        BSel = 1'bx;
         MEMRW = 1'bx;
+        pcToAlu = 0;
       end
   
     endcase
@@ -196,17 +215,20 @@ module imm_gen (
   
   parameter i_opcode1 = 7'b0010011; // addi etc.
   parameter i_opcode2 = 7'b0000011; // lw etc.
-  parameter s_opcode1 = 7'b0100011; // sw et.
+  parameter s_opcode1 = 7'b0100011; // sw etc.
+  parameter j_opcode1 = 7'b1101111; // jal 
 
   wire [6:0] opcode = instruction [6:0];
 
   wire [11:0] immediate_i = instruction[31:20];
   wire [11:0] immediate_s = {instruction[31:25], instruction[11:7]};
+  wire [11:0] immediate_j = {instruction[31], instruction[19:12], instruction[20], instruction[30:21]};
 
   always @(*) begin
     case(opcode) 
       i_opcode1, i_opcode2: immediate = {{20{instruction[31]}}, immediate_i};
 			s_opcode1: immediate = { {20{instruction[31]}} , immediate_s};
+      j_opcode1: immediate = { {20{instruction[31]}}, immediate_j}
       default: immediate = 32'bx;
     endcase
   end
