@@ -24,7 +24,7 @@ module top(
   wire [1:0] WBSel, ALUSel; // control signal wires
   wire regWrite, BSel, MEMRW, PcToAlu, PcALuMem; 
 
-  wire [31:0] imm_out; // imm from immediate generator
+  wire [31:0] imm_out; 
   wire [31:0] alu_out, dataMem_out; 
   wire [31:0] dataW;
   wire [31:0] data1, data2;
@@ -35,7 +35,7 @@ module top(
   mux_2x1 m2(alu_out, pc_4, PcALuMem, pc_i);
   program_coutner p0(clk, rst, pc_i, pc_o);
   adder a0(pc_o, 32'd4, pc_4);
-  instruction_memory i0(pc_o, rst, ins_out); // got the instruction
+  instruction_memory i0(pc_o, rst, ins_out); 
 
   decoder d0(ins_out, opcode, Rd, Funct3, Rs1, Rs2, Funct7, imm);
   control_unit c0(ins_out, regWrite, BSel, MEMRW, PcToAlu, PcALuMem, WBSel, ALUSel);
@@ -50,8 +50,6 @@ module top(
   data_memory dm0(alu_out, MEMRW, dataMem_out);  
   
   mux_3x1 m3(dataMem_out, alu_out, pc_4, PcALuMem, dataW);
-
-  //mux_2x1 m1(alu_out, dataMem_out, Bsel, dataW); // need to change to 3x1 mux_2x1
 
   assign DataW = dataW;
   assign DataMem_Out = dataMem_out;
