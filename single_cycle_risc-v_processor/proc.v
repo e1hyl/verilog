@@ -13,7 +13,6 @@ module top(
 );
 
   wire [31:0] pc_4, pc_o, pc_i;
-  wire [31:0] pc_4, pc_o, pc_i;
   wire [31:0] ins_out;
 
   wire [6:0] opcode, Funct7;
