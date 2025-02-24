@@ -12,7 +12,7 @@ module top(
   output [31:0] DataMem_Out 
 );
 
-  wire [31:0] pc_i, pc_o;
+  wire [31:0] pc_4, pc_o, pc_i;
   wire [31:0] ins_out;
 
   wire [6:0] opcode, Funct7;
@@ -20,43 +20,43 @@ module top(
   wire [2:0] Funct3;
   wire [11:0] imm;
 
-  wire [1:0] aluSel; // control signal wires
-  wire regWrite, bSel, MEMRW; 
+  wire [1:0] WBSel, ALUSel; // control signal wires
+  wire regWrite, BSel, MEMRW, PcToAlu, PcALuMem; 
 
   wire [31:0] imm_out; // imm from immediate generator
   wire [31:0] alu_out, dataMem_out; 
   wire [31:0] dataW;
   wire [31:0] data1, data2;
 
-  wire [31:0] mux_out; // data2 or imm_out
-  wire [31:0] alu_resultt;
+  wire [31:0] mux_2x1_out1, mux_2x1_out2; // data1 or pc_o, data2 or imm_out
+ 
   
-  // mux m3
-
+  mux_2x1 m2(alu_out, pc_4, PcALuMem, pc_i);
   program_coutner p0(clk, rst, pc_i, pc_o);
-  adder a0(pc_o, 32'd4, pc_i);
+  adder a0(pc_o, 32'd4, pc_4);
   instruction_memory i0(pc_o, rst, ins_out); // got the instruction
 
   decoder d0(ins_out, opcode, Rd, Funct3, Rs1, Rs2, Funct7, imm);
-  control_unit c0(ins_out, regWrite, bSel, Bsel, MEMRW, aluSel);
+  control_unit c0(ins_out, regWrite, BSel, MEMRW, PcToAlu, PcALuMem, WBSel, ALUSel);
 
   regfile r0(clk, regWrite, Rs1, Rs2, Rd, dataW, data1, data2);
-  
-  // mux m2()
+  mux_2x1 m1(pc_o, data1, PcToAlu, mux_2x1_out1);
 
   imm_gen im0(ins_out, imm_out);
-  mux m0(imm_out, data2, bSel, mux_out);
+  mux_2x1 m0(imm_out, data2, BSel, mux_2x1_out2);
 
-  alu al0(aluSel, data1, mux_out, alu_out);
+  alu al0(aluSel, mux_2x1_out1, mux_2x1_out2, alu_out);
   data_memory dm0(alu_out, MEMRW, dataMem_out);  
   
-  mux m1(alu_out, dataMem_out, Bsel, dataW); // need to change to 3x1 mux
+  mux_3x1 m3(dataMem_out, alu_out, pc_4, PcALuMem, dataW);
+
+  //mux_2x1 m1(alu_out, dataMem_out, Bsel, dataW); // need to change to 3x1 mux_2x1
 
   assign DataW = dataW;
   assign DataMem_Out = dataMem_out;
   assign Alu_result = alu_out;
   assign Immediate_result = imm_out;
-  assign PC = pc_i;
+  assign PC = pc_4;
   assign Instruction = ins_out;
   assign rs1 = Rs1;
   assign rs2 = Rs2;
@@ -68,8 +68,8 @@ endmodule
 
 module control_unit (
   input [31:0] instruction,
-  output reg RegWrite, BSel, MEMRW, pcToAlu, 
-  output reg [1:0] BSel, // Back Select 
+  output reg RegWrite, BSel, MEMRW, PcToAlu, PcALuMem,
+  output reg [1:0] WBSel, // Write Back Select 
   output reg [1:0] ALUSel 
 );
   
@@ -84,45 +84,50 @@ module control_unit (
         RegWrite = 1;
         BSel = 0;
         ALUSel = 2'b00;
-        BSel = 1;
+        WBSel = 2'b01;
         MEMRW = 1'bx;
-        pcToAlu = 0;
+        PcToAlu = 0;
+        PcALuMem = 0;
       end
       
       17'b0010011_000_???????: begin  // addi
         RegWrite = 1;
         BSel = 1;
         ALUSel = 2'b00;
-        BSel = 1;
+        WBSel = 2'b01;
         MEMRW = 1'bx;
-        pcToAlu = 0;
+        PcToAlu = 0;
+        PcALuMem = 0;
       end
       
       17'b0000011_010_???????: begin  // lw 
         RegWrite = 1;
         BSel = 1;
         ALUSel = 2'b00;
-        BSel = 0;
+        WBSel = 2'b00;
         MEMRW = 0;
-        pcToAlu = 0;
+        PcToAlu = 0;
+        PcALuMem = 0;
       end
       
       17'b0100011_010_???????: begin  // sw 
         RegWrite = 0;
         BSel = 1;
         ALUSel = 2'b00;
-        BSel = 0;
+        WBSel = 2'bx;
         MEMRW = 1;
-        pcToAlu = 0;
+        PcToAlu = 0;
+        PcALuMem = 0;
       end
         
       17'b110111_???_???????: begin  // jal 
         RegWrite = 0;
         BSel = 1;
         ALUSel = 2'b00;
-        BSel = 0;
+        WBSel = 2'b10;
         MEMRW = 1;
-        pcToAlu = 1;
+        PcToAlu = 1;
+        PcALuMem = 1;
       end
 
       default: begin
@@ -131,7 +136,7 @@ module control_unit (
         ALUSel = 2'b00;
         BSel = 1'bx;
         MEMRW = 1'bx;
-        pcToAlu = 0;
+        PcToAlu = 0;
       end
   
     endcase
@@ -357,13 +362,30 @@ module regfile (
 
 endmodule
 
-module mux (
+module mux_2x1 (
   input [31:0] a, b, 
   input s,
   output [31:0] y
 );
 
   assign y = s ? a : b;
+
+endmodule
+
+module mux_3x1 (
+  input [31:0] a, b, c,
+  input [1:0] s,
+  output [31:0] y
+);
+  
+  always @(*) begin
+    case(s) 
+      2'b00: y = a;
+      2'b01: y = b;
+      2'b10: y = c;
+      default: y = 32'b0;  
+    endcase
+  end
 
 endmodule
 
