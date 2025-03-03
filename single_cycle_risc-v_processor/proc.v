@@ -6,8 +6,8 @@ module top(
   output [31:0] Instruction,
   output [4:0] rs1,
   output [4:0] rs2,
-  output [31:0] Data1,
-  output [31:0] Data2,
+  output [31:0] DataR1,
+  output [31:0] DataR2,
   output [31:0] DataW,
   output [31:0] DataMem_Out 
 );
@@ -16,39 +16,39 @@ module top(
   wire [31:0] ins_out;
 
   wire [6:0] opcode, Funct7;
-  wire [4:0] Rs1, Rs2, Rd;
+  wire [4:0] rsR1, rsR2, rsW;
   wire [2:0] Funct3;
   wire [11:0] imm;
 
   wire [1:0] WBSel, ALUSel; // control signal wires
-  wire regWrite, BSel, MEMRW, PcToAlu, PcALuMem; 
+  wire RegWEn, BSel, MemRW, ASel, PCSel; 
 
   wire [31:0] imm_out; 
   wire [31:0] alu_out, dataMem_out; 
   wire [31:0] dataW;
-  wire [31:0] data1, data2;
+  wire [31:0] dataR1, dataR2;
 
-  wire [31:0] mux_2x1_out1, mux_2x1_out2; // data1 or pc_o, data2 or imm_out
+  wire [31:0] mux_2x1_out1, mux_2x1_out2; // dataR1 or pc_o, dataR2 or imm_out
  
   
-  mux_2x1 m2(alu_out, pc_4, PcALuMem, pc_i);
+  mux_2x1 m2(alu_out, pc_4, PCSel, pc_i);
   program_coutner p0(clk, rst, pc_i, pc_o);
   adder a0(pc_o, 32'd4, pc_4);
   instruction_memory i0(pc_o, rst, ins_out); 
+  
+  decoder d0(ins_out, opcode, rsW, Funct3, rsR1, rsR2, Funct7, imm);
+  control_unit c0(ins_out, RegWEn, BSel, MemRW, ASel, PCSel, WBSel, ALUSel);
 
-  decoder d0(ins_out, opcode, Rd, Funct3, Rs1, Rs2, Funct7, imm);
-  control_unit c0(ins_out, regWrite, BSel, MEMRW, PcToAlu, PcALuMem, WBSel, ALUSel);
-
-  regfile r0(clk, regWrite, Rs1, Rs2, Rd, dataW, data1, data2);
-  mux_2x1 m1(pc_o, data1, PcToAlu, mux_2x1_out1);
+  regfile r0(clk, RegWEn, rsR1, rsR2, rsW, dataW, dataR1, dataR2);
+  mux_2x1 m1(pc_o, dataR1, ASel, mux_2x1_out1);
 
   imm_gen im0(ins_out, imm_out);
-  mux_2x1 m0(imm_out, data2, BSel, mux_2x1_out2);
+  mux_2x1 m0(imm_out, dataR2, BSel, mux_2x1_out2);
 
   alu al0(aluSel, mux_2x1_out1, mux_2x1_out2, alu_out);
-  data_memory dm0(alu_out, MEMRW, dataMem_out);  
+  data_memory dm0(alu_out, MemRW, dataMem_out);  
   
-  mux_3x1 m3(dataMem_out, alu_out, pc_4, PcALuMem, dataW);
+  mux_3x1 m3(dataMem_out, alu_out, pc_4, PCSel, dataW);
 
   assign DataW = dataW;
   assign DataMem_Out = dataMem_out;
@@ -56,17 +56,17 @@ module top(
   assign Immediate_result = imm_out;
   assign PC = pc_4;
   assign Instruction = ins_out;
-  assign rs1 = Rs1;
-  assign rs2 = Rs2;
-  assign Data1 = data1;
-  assign Data2 = data2;
+  assign rs1 = rsR1;
+  assign rs2 = rsR2;
+  assign DataR1 = dataR1;
+  assign DataR2 = dataR2;
 
 endmodule
 
 
 module control_unit (
   input [31:0] instruction,
-  output reg RegWrite, BSel, MEMRW, PcToAlu, PcALuMem,
+  output reg RegWEn, BSel, MemRW, ASel, PCSel,
   output reg [1:0] WBSel, // Write Back Select 
   output reg [1:0] ALUSel 
 );
@@ -79,62 +79,73 @@ module control_unit (
     casez ({opcode, funct3, funct7})
      
       17'b0110011_000_0000000: begin  // add
-        RegWrite = 1;
+        RegWEn = 1;
         BSel = 0;
         ALUSel = 2'b00;
         WBSel = 2'b01;
-        MEMRW = 1'bx;
-        PcToAlu = 0;
-        PcALuMem = 0;
+        MemRW = 1'bx;
+        ASel = 0;
+        PCSel = 0;
       end
       
       17'b0010011_000_???????: begin  // addi
-        RegWrite = 1;
+        RegWEn = 1;
         BSel = 1;
         ALUSel = 2'b00;
         WBSel = 2'b01;
-        MEMRW = 1'bx;
-        PcToAlu = 0;
-        PcALuMem = 0;
+        MemRW = 1'bx;
+        ASel = 0;
+        PCSel = 0;
       end
       
       17'b0000011_010_???????: begin  // lw 
-        RegWrite = 1;
+        RegWEn = 1;
         BSel = 1;
         ALUSel = 2'b00;
         WBSel = 2'b00;
-        MEMRW = 0;
-        PcToAlu = 0;
-        PcALuMem = 0;
+        MemRW = 0;
+        ASel = 0;
+        PCSel = 0;
       end
       
       17'b0100011_010_???????: begin  // sw 
-        RegWrite = 0;
+        RegWEn = 0;
         BSel = 1;
         ALUSel = 2'b00;
         WBSel = 2'bx;
-        MEMRW = 1;
-        PcToAlu = 0;
-        PcALuMem = 0;
+        MemRW = 1;
+        ASel = 0;
+        PCSel = 0;
       end
         
       17'b110111_???_???????: begin  // jal 
-        RegWrite = 0;
+        RegWEn = 0;
         BSel = 1;
         ALUSel = 2'b00;
         WBSel = 2'b10;
-        MEMRW = 1;
-        PcToAlu = 1;
-        PcALuMem = 1;
+        MemRW = 1;
+        ASel = 1;
+        PCSel = 1;
+      end
+
+      17'b1100111_000_???????: begin // jalr 
+        RegWEn = 1;
+        BSel = 1;
+        ALUSel = 2'b00;
+        WBSel = 2'b10;
+        MemRW = 1;
+        ASel  = 0;
+        PCSel = 1;
       end
 
       default: begin
-        RegWrite = 0;
+        RegWEn = 0;
         BSel = 0;
-        ALUSel = 2'b00;
-        BSel = 1'bx;
-        MEMRW = 1'bx;
-        PcToAlu = 0;
+        ALUSel = 2'bxx;
+        WBSel = 2'bxx;
+        MemRW = 0;
+        ASel = 0;
+        PCSel = 0;
       end
   
     endcase
@@ -203,6 +214,12 @@ module instruction_memory (
     inst_mem[10] = 8'h81;
     inst_mem[9] = 8'h25;
     inst_mem[8] = 8'h03;
+
+    // jalr x10 x24 20 0x00530567
+		inst_mem[31] = 8'h00;
+		inst_mem[30] = 8'h53;
+		inst_mem[29] = 8'h05;
+		inst_mem[28] = 8'h67;
 
     end
 
@@ -303,7 +320,7 @@ module decoder (
 endmodule
 
 module regfile (
-  input clk, RegWrite,
+  input clk, RegWEn,
   input [4:0] rs1, rs2, rd,
   input [31:0] WriteData,
   output [31:0] ReadData1, ReadData2
@@ -349,7 +366,7 @@ module regfile (
   always @(posedge clk) begin
     Reg[0] = 0;
     
-    if(RegWrite) begin
+    if(RegWEn) begin
       Reg[rd] = WriteData;
     end
 
@@ -389,14 +406,14 @@ endmodule
 
 module alu (
   input [1:0] ALUSel,
-  input [31:0] data1, data2,
+  input [31:0] dataR1, dataR2,
   output reg [31:0] result
 );
 
   always @(*) begin
     case(ALUSel) 
-      2'b00: result = data1 + data2;
-      2'b10: result = data1 || data2;
+      2'b00: result = dataR1 + dataR2;
+      2'b10: result = dataR1 || dataR2;
       default: result = 32'b0; 
     endcase
   end
@@ -405,7 +422,7 @@ endmodule
 
 module data_memory(
   input [31:0] addr,
-  input MEMRW, 
+  input MemRW, 
   output reg [31:0] dataR
 );
 
@@ -420,7 +437,7 @@ module data_memory(
   end
 
   always @(*) begin
-    if(MEMRW)
+    if(MemRW)
     begin
       dataR[7:0] = data_mem[addr];    
       dataR[15:8] = data_mem[addr+1];    
@@ -436,6 +453,38 @@ module data_memory(
     end
 
   end 
+
+endmodule
+
+module branch_comp(
+  input [31:0] dataR1, dataR2,
+  input BrUn,
+  output BrEq, BrLT
+); 
+
+always @(*) begin
+
+  if (dataR1 == dataR2) begin
+      BrEq = 1;
+      BrLT = 0;
+  end
+
+  else if (BrUn && (dataR1 < dataR2)) begin
+      BrLT = 1;
+      BrEq = 0;
+  end
+
+  else if (!BrUn && ($signed(dataR1) < $signed(dataR2))) begin
+      BrLT = 1;
+      BrEq = 0;
+  end
+
+  else begin
+      BrLT = 0;
+      BrEq = 0;
+  end
+
+end
 
 endmodule
 
