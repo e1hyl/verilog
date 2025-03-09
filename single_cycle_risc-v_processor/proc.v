@@ -20,8 +20,10 @@ module top(
   wire [2:0] Funct3;
   wire [11:0] imm;
 
-  wire [1:0] WBSel, ALUSel; // control signal wires
+  // control signal wires
+  wire [1:0] WBSel, ALUSel; 
   wire RegWEn, BSel, MemRW, ASel, PCSel; 
+  wire [2:0] ImmSel;
 
   wire [31:0] imm_out; 
   wire [31:0] alu_out, dataMem_out; 
@@ -37,7 +39,7 @@ module top(
   instruction_memory i0(pc_o, rst, ins_out); 
   
   decoder d0(ins_out, opcode, rsW, Funct3, rsR1, rsR2, Funct7, imm);
-  control_unit c0(ins_out, RegWEn, BSel, MemRW, ASel, PCSel, WBSel, ALUSel);
+  control_unit c0(ins_out, PCSel, RegWEn, ImmSel, BrUn, BSel, ASel, ALUSel, MemRW, WBSel);
 
   regfile r0(clk, RegWEn, rsR1, rsR2, rsW, dataW, dataR1, dataR2);
   mux_2x1 m1(pc_o, dataR1, ASel, mux_2x1_out1);
@@ -66,14 +68,21 @@ endmodule
 
 module control_unit (
   input [31:0] instruction,
-  output reg RegWEn, BSel, MemRW, ASel, PCSel,
-  output reg [1:0] WBSel, // Write Back Select 
-  output reg [1:0] ALUSel 
+  input BrEq, BrLT,
+
+  output reg PCSel, RegWEn,
+  output reg [2:0] ImmSel,
+  output reg BrUn,
+  output reg BSel, ASel,
+  output reg [1:0] ALUSel,
+  output reg MemRW,
+  output reg [1:0] WBSel, 
 );
   
   wire [6:0] opcode = instruction [6:0];
   wire [2:0] funct3 = instruction [14:12];
   wire [6:0] funct7 = instruction [31:25];
+
 
   always @(*) begin
     casez ({opcode, funct3, funct7})
@@ -86,6 +95,8 @@ module control_unit (
         MemRW = 1'bx;
         ASel = 0;
         PCSel = 0;
+        ImmSel = 3'bxxx;
+        BrUn = 1'bx;
       end
       
       17'b0010011_000_???????: begin  // addi
@@ -96,6 +107,8 @@ module control_unit (
         MemRW = 1'bx;
         ASel = 0;
         PCSel = 0;
+        ImmSel = 3'b000;
+        BrUn = 1'bx;
       end
       
       17'b0000011_010_???????: begin  // lw 
@@ -106,6 +119,8 @@ module control_unit (
         MemRW = 0;
         ASel = 0;
         PCSel = 0;
+        ImmSel = 3'b000;
+        BrUn = 1'bx;
       end
       
       17'b0100011_010_???????: begin  // sw 
@@ -116,6 +131,8 @@ module control_unit (
         MemRW = 1;
         ASel = 0;
         PCSel = 0;
+        ImmSel = 3'b001;
+        BrUn = 1'bx;
       end
         
       17'b110111_???_???????: begin  // jal 
@@ -126,6 +143,8 @@ module control_unit (
         MemRW = 1;
         ASel = 1;
         PCSel = 1;
+        ImmSel = 3'b010;
+        BrUn = 1'bx;
       end
 
       17'b1100111_000_???????: begin // jalr 
@@ -136,7 +155,190 @@ module control_unit (
         MemRW = 1;
         ASel  = 0;
         PCSel = 1;
+        ImmSel = 3'b000;
+        BrUn = 1'bx;
       end
+
+      17'b1100011_000_???????: begin // beq
+        casez({BrEq, BrLT})
+          2'b1?: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 1'bx;
+          end
+        
+          default: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 1'bx;
+          end
+
+        endcase
+
+      end
+
+      17'b1100011_101_???????: begin // bge
+        casez({BrEq, BrLT})
+          2'b?0: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 1;
+            ImmSel = 3'b011;
+            BrUn = 0;
+          end
+        
+          default: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 0;
+          end
+
+        endcase
+
+      end
+
+      17'b1100011_101_???????: begin // bgeu
+        casez({BrEq, BrLT})
+          2'b?0: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 1;
+            ImmSel = 3'b011;
+            BrUn = 1;
+          end
+        
+          default: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 1;
+          end
+
+        endcase
+
+      end
+
+        17'b1100011_101_???????: begin // blt
+        casez({BrEq, BrLT})
+          2'b01: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 1;
+            ImmSel = 3'b011;
+            BrUn = 0;
+          end
+        
+          default: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 0;
+          end
+
+        endcase
+
+      end
+
+      17'b1100011_101_???????: begin // bltu
+        casez({BrEq, BrLT})
+          2'b01: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 1;
+            ImmSel = 3'b011;
+            BrUn = 1;
+          end
+        
+          default: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 1;
+          end
+
+        endcase
+
+      end
+
+      17'b1100011_000_???????: begin // bne
+        casez({BrEq, BrLT})
+          2'b0?: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 1'bx;
+          end
+        
+          default: begin
+            RegWEn = 1;
+            BSel = 1;
+            ALUSel = 2'b00;
+            WBSel = 2'b10;
+            MemRW = 1;
+            ASel  = 0;
+            PCSel = 0;
+            ImmSel = 3'b011;
+            BrUn = 1'bx;
+          end
+
+        endcase
+
+      end
+
 
       default: begin
         RegWEn = 0;
@@ -144,8 +346,10 @@ module control_unit (
         ALUSel = 2'bxx;
         WBSel = 2'bxx;
         MemRW = 0;
-        ASel = 0;
+        ASel  = 0;
         PCSel = 0;
+        ImmSel = 3'bxxx;
+        BrUn = 1'bx;
       end
   
     endcase
@@ -230,29 +434,25 @@ endmodule
 
 module imm_gen (
   input [31:0] instruction,
+  input [2:0] ImmSel,
+  
   output reg [31:0] immediate
 );
   
-  parameter i_opcode1 = 7'b0010011; // addi etc.
-  parameter i_opcode2 = 7'b0000011; // lw etc.
-  parameter s_opcode1 = 7'b0100011; // sw etc.
-  parameter j_opcode1 = 7'b1101111; // jal 
-
-  wire [6:0] opcode = instruction [6:0];
-
   wire [11:0] immediate_i = instruction[31:20];
   wire [11:0] immediate_s = {instruction[31:25], instruction[11:7]};
   wire [11:0] immediate_j = {instruction[31], instruction[19:12], instruction[20], instruction[30:21]};
+  wire [12:1] immediate_b = {instruction[31], instruction[7], instruction[30:25], instruction[11:8]};
 
   always @(*) begin
-    case(opcode) 
-      i_opcode1, i_opcode2: immediate = {{20{instruction[31]}}, immediate_i};
-			s_opcode1: immediate = { {20{instruction[31]}} , immediate_s};
-      j_opcode1: immediate = { {20{instruction[31]}}, immediate_j}
-      default: immediate = 32'bx;
+    case({ImmSel})
+      3'b000: immediate = {{20{instruction[31]}}, immediate_i};
+      3'b001: immediate = {{20{instruction[31]}} , immediate_s};
+      3'b010: immediate = {{20{instruction[31]}}, immediate_j};
+      3'b011: immediate = 2*{{20{branch_im[12]}} , branch_im};
     endcase
   end
-  
+
 endmodule
 
 module decoder (
@@ -328,39 +528,39 @@ module regfile (
   reg [31:0] Reg [31:0];
   
   initial begin
-    Reg[1]=5;
-    Reg[2]=6;
-    Reg[3]=7;
-    Reg[4]=2;	
-    Reg[5]=3;
-    Reg[6]=1;	
-    Reg[7]=0;
-    Reg[8]=9;
-    Reg[9]=23;
-    Reg[10]=11;
+    Reg[1] = 5;
+    Reg[2] = 6;
+    Reg[3] = 7;
+    Reg[4] = 2;	
+    Reg[5] = 3;
+    Reg[6] = 1;	
+    Reg[7] = 0;
+    Reg[8] = 9;
+    Reg[9] = 23;
+    Reg[10] = 11;
   
-    Reg[11]=5;
-    Reg[12]=6;
-    Reg[13]=7;
-    Reg[14]=2;	
-    Reg[15]=3;
-    Reg[16]=1;	
-    Reg[17]=0;
-    Reg[18]=32;
-    Reg[19]=15;
-    Reg[20]=11;
+    Reg[11] = 5;
+    Reg[12] = 6;
+    Reg[13] = 7;
+    Reg[14] = 2;	
+    Reg[15] = 3;
+    Reg[16] = 1;	
+    Reg[17] = 0;
+    Reg[18] = 32;
+    Reg[19] = 15;
+    Reg[20] = 11;
     
-    Reg[21]=5;
-    Reg[22]=6;
-    Reg[23]=7;
-    Reg[24]=2;	
-    Reg[25]=3;
-    Reg[26]=1;	
-    Reg[27]=0;
-    Reg[28]=28;
-    Reg[29]=6;
-    Reg[30]=17;
-    Reg[31]=31;
+    Reg[21] = 5;
+    Reg[22] = 6;
+    Reg[23] = 7;
+    Reg[24] = 2;	
+    Reg[25] = 3;
+    Reg[26] = 1;	
+    Reg[27] = 0;
+    Reg[28] = 28;
+    Reg[29] = 6;
+    Reg[30] = 17;
+    Reg[31] = 31;
   end
 
   always @(posedge clk) begin
