@@ -11,7 +11,7 @@ module i2c_main(
   State currentState, nextState;
 
 
-  logic count_next;
+  logic [7:0] count_next;
   logic i2c_sda_next;
   logic [7:0] count;
   logic [6:0] addr;
