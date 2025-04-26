@@ -420,10 +420,10 @@ module instruction_memory (
     inst_mem[8] = 8'h03;
 
     // jalr x10 x24 20 0x00530567
-		inst_mem[31] = 8'h00;
-		inst_mem[30] = 8'h53;
-		inst_mem[29] = 8'h05;
-		inst_mem[28] = 8'h67;
+    inst_mem[31] = 8'h00;
+    inst_mem[30] = 8'h53;
+    inst_mem[29] = 8'h05;
+    inst_mem[28] = 8'h67;
 
     end
 
